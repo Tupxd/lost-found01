@@ -1,9 +1,33 @@
+import json
+import os
 from datetime import datetime
-import random
 import re
-
 import streamlit as st
 
+# ---------------------------------------------------------
+# 1. ฟังก์ชันจัดการบันทึกและโหลดไฟล์ JSON ( persistent storage )
+# ---------------------------------------------------------
+REPORTS_FILE = "reports_data.json"
+STUDENTS_FILE = "students_data.json"
+
+def load_json(filepath, default_data):
+    """โหลดข้อมูลจากไฟล์ JSON ถ้าไม่มีไฟล์ให้ใช้ข้อมูลเริ่มต้น"""
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return default_data
+    return default_data
+
+def save_json(filepath, data):
+    """บันทึกข้อมูลลงไฟล์ JSON ถาวร"""
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+# ---------------------------------------------------------
+# ตั้งค่าหน้าเว็บ
+# ---------------------------------------------------------
 st.set_page_config(
     page_title="Lost & Found HWP",
     page_icon="🔎",
@@ -27,11 +51,50 @@ LOCATIONS = [
 ]
 FIND_CATEGORIES = ["อุปกรณ์การเรียน", "กระเป๋า/กระเป๋าสตางค์", "อุปกรณ์อิเล็กทรอนิกส์", "เสื้อผ้า", "ขวดน้ำ", "อื่นๆ"]
 CATEGORIES = FIND_CATEGORIES
-STUDENTS = {
-    "65001": {"name": "กมลชนก ใจดี", "class": "ม.5/1", "score": 82, "email": "student1@gmail.com"},
-    "65002": {"name": "ธนกฤต แสงทอง", "class": "ม.4/3", "score": 64, "email": "thanakrit@hotmail.com"},
-    "65003": {"name": "พิมพ์ชนก รุ่งเรือง", "class": "ม.6/2", "score": 95, "email": "pimchanok@outlook.com"},
+
+# ฐานข้อมูลตัวอย่างเริ่มต้น
+DEFAULT_STUDENTS = {
+    "65001": {"name": "กมลชนก ใจดี", "class": "ม.5/1", "score": 82, "email": "student1@gmail.com", "password": "123456"},
+    "65002": {"name": "ธนกฤต แสงทอง", "class": "ม.4/3", "score": 64, "email": "thanakrit@hotmail.com", "password": "123456"},
+    "65003": {"name": "พิมพ์ชนก รุ่งเรือง", "class": "ม.6/2", "score": 95, "email": "pimchanok@outlook.com", "password": "123456"},
 }
+
+DEFAULT_REPORTS = [
+    {
+        "item": "กระเป๋าสตางค์สีดำ",
+        "category": "กระเป๋า/กระเป๋าสตางค์",
+        "location": "โรงอาหาร",
+        "found_at": "03/09/2026 07:45",
+        "description": "พบใต้โต๊ะใกล้ประตูทางออก มีบัตรนักเรียนอยู่ด้านใน",
+        "reporter": "65003",
+        "status": "นำส่งห้องปกครองแล้ว",
+    },
+    {
+        "item": "เสื้อพละไซซ์ M",
+        "category": "เสื้อผ้า",
+        "location": "โดม",
+        "found_at": "02/09/2026 16:20",
+        "description": "เสื้อพละสีฟ้า ปักชื่อย่อที่หน้าอกด้านซ้าย",
+        "reporter": "65001",
+        "status": "นำส่งห้องปกครองแล้ว",
+    },
+    {
+        "item": "ปากกาสไตลัส",
+        "category": "อุปกรณ์การเรียน",
+        "location": "อาคาร 3",
+        "found_at": "02/09/2026 12:10",
+        "description": "สีขาว พร้อมปลอกแม่เหล็กสีเทา",
+        "reporter": "65002",
+        "status": "นำส่งห้องปกครองแล้ว",
+    },
+]
+
+# โหลดข้อมูลเข้า st.session_state จากไฟล์ JSON ถาวร
+if "students_db" not in st.session_state:
+    st.session_state.students_db = load_json(STUDENTS_FILE, DEFAULT_STUDENTS)
+
+if "reports" not in st.session_state:
+    st.session_state.reports = load_json(REPORTS_FILE, DEFAULT_REPORTS)
 
 
 def is_valid_email(email):
@@ -50,83 +113,25 @@ def is_valid_email(email):
 
 def find_student_by_email(email):
     normalized = (email or "").strip().lower()
-    for student_id, student in STUDENTS.items():
+    for student_id, student in st.session_state.students_db.items():
         for field in ("email", "personal_email", "school_email"):
             if student.get(field, "").strip().lower() == normalized:
                 return student_id
     return None
 
 
-def generate_otp():
-    return f"{random.randint(0, 999999):06d}"
-
-
 def logout_user():
     st.session_state.logged_in = False
     st.session_state.student_id = ""
-    st.session_state.auth_email = ""
-    st.session_state.auth_step = "email"
-    st.session_state.otp_code = ""
-    st.session_state.login_email = ""
-    st.session_state.login_otp = ""
-    st.session_state.pending_link_email = ""
-    st.session_state.pending_student_id = ""
-    st.session_state.pending_class = ""
     st.session_state.active_page = "find"
     st.session_state.find_open = True
     st.rerun()
 
 
-if "reports" not in st.session_state:
-    st.session_state.reports = [
-        {
-            "item": "กระเป๋าสตางค์สีดำ",
-            "category": "กระเป๋า/กระเป๋าสตางค์",
-            "location": "โรงอาหาร",
-            "found_at": "03/09/2026 07:45",
-            "description": "พบใต้โต๊ะใกล้ประตูทางออก มีบัตรนักเรียนอยู่ด้านใน",
-            "reporter": "65003",
-            "status": "นำส่งห้องปกครองแล้ว",
-        },
-        {
-            "item": "เสื้อพละไซซ์ M",
-            "category": "เสื้อผ้า",
-            "location": "โดม",
-            "found_at": "02/09/2026 16:20",
-            "description": "เสื้อพละสีฟ้า ปักชื่อย่อที่หน้าอกด้านซ้าย",
-            "reporter": "65001",
-            "status": "นำส่งห้องปกครองแล้ว",
-        },
-        {
-            "item": "ปากกาสไตลัส",
-            "category": "อุปกรณ์การเรียน",
-            "location": "อาคาร 3",
-            "found_at": "02/09/2026 12:10",
-            "description": "สีขาว พร้อมปลอกแม่เหล็กสีเทา",
-            "reporter": "65002",
-            "status": "นำส่งห้องปกครองแล้ว",
-        },
-    ]
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "student_id" not in st.session_state:
     st.session_state.student_id = ""
-if "auth_email" not in st.session_state:
-    st.session_state.auth_email = ""
-if "auth_step" not in st.session_state:
-    st.session_state.auth_step = "email"
-if "otp_code" not in st.session_state:
-    st.session_state.otp_code = ""
-if "login_email" not in st.session_state:
-    st.session_state.login_email = ""
-if "login_otp" not in st.session_state:
-    st.session_state.login_otp = ""
-if "pending_link_email" not in st.session_state:
-    st.session_state.pending_link_email = ""
-if "pending_student_id" not in st.session_state:
-    st.session_state.pending_student_id = ""
-if "pending_class" not in st.session_state:
-    st.session_state.pending_class = ""
 
 st.markdown(
     """
@@ -155,9 +160,6 @@ st.markdown(
     .brand-kicker { color: var(--soft); font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
     .brand h1 { margin: .15rem 0 .35rem; }
     .brand p { margin: 0; color: #fff8ef; }
-    .auth-card { background: var(--brown); color: var(--white); border-radius: 16px; padding: 1.1rem 1rem; margin-bottom: 1rem; }
-    .auth-card .auth-header { font-family: 'Kanit', sans-serif; font-size: 1.2rem; font-weight: 600; color: var(--white); margin-bottom: .35rem; }
-    .auth-card .auth-subtitle { color: #f7eedf; font-size: .84rem; }
     .nav-drawer { background: var(--brown); border-radius: 16px; padding: .7rem; margin: 0 0 1.2rem; }
     .nav-title { color: #fff8ef; font-family: Kanit, sans-serif; font-size: 1rem; padding: .3rem .6rem .65rem; }
     .nav-drawer div.stButton > button { background: transparent; color: white; text-align: left; border: 1px solid transparent; box-shadow: none; padding: .7rem .8rem; margin: .12rem 0; min-height: 44px; }
@@ -200,7 +202,7 @@ st.markdown(
     .status { color:#437343; font-weight:600; font-size:.82rem; margin-top:.65rem; }
     .threshold { background: #fff0df; border: 1px solid var(--soft); padding:.8rem 1rem; border-radius:10px; color:var(--brown); font-weight:600; margin: .8rem 0; }
     .instruction-card { background: #fff0df; border: 1px solid var(--soft); border-radius: 12px; color: var(--brown); font-weight: 600; padding: 1rem; margin-top: .8rem; }
-    div.stButton > button, div[data-testid="stFormSubmitButton"] button { width:100%; min-height: 44px; border-radius:9px; font-weight:700; border:0; background:var(--orange); color:var(--ink); }
+    div.stButton > button, div[data-testid="stFormSubmitButton"] button { width:100%; min-height: 44px; border-radius:99px; font-weight:700; border:0; background:var(--orange); color:var(--ink); }
     div.stButton > button:hover, div[data-testid="stFormSubmitButton"] button:hover { background:#e88900; color:var(--ink); }
     div.stButton > button:focus, div[data-testid="stFormSubmitButton"] button:focus { outline: 2px solid rgba(123,84,47,.35); outline-offset: 2px; }
     div[role="listbox"], div[data-baseweb="menu"] { max-width: 100% !important; }
@@ -218,123 +220,146 @@ st.markdown(
 )
 
 
+@st.dialog("เข้าสู่ระบบ / ลงทะเบียน")
 def show_login():
-    st.markdown('<div class="brand"><div class="brand-kicker">Horwang Pathumthani School</div><h1>Lost & Found HWP</h1><p>พื้นที่กลางสำหรับของหายและของที่เก็บได้ในโรงเรียน</p></div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-label">เข้าสู่ระบบด้วยอีเมลส่วนตัว</div>', unsafe_allow_html=True)
-    st.caption("เข้าสู่ระบบด้วยอีเมลส่วนตัวและยืนยัน OTP เพื่อเชื่อมต่อกับข้อมูลนักเรียน")
+    st.markdown('<div class="modal-kicker">Welcome to Lost & Found HWP</div>', unsafe_allow_html=True)
 
-    if st.session_state.auth_step == "otp" and st.session_state.auth_email:
-        st.markdown(
-            f'<div class="auth-card"><div class="auth-header">ยืนยันตัวตน / Identity Verify</div><div class="auth-subtitle">ส่งรหัส OTP ไปยัง {st.session_state.auth_email}</div></div>',
-            unsafe_allow_html=True,
-        )
-        st.info(f"รหัส OTP ชั่วคราว: {st.session_state.otp_code} (สำหรับการทดสอบในเครื่องนี้)")
+    tab_login, tab_register = st.tabs(["🔑 เข้าสู่ระบบ (Sign In)", "📝 ลงทะเบียนครั้งแรก (Sign Up)"])
 
-    if st.session_state.auth_step == "profile_link":
-        st.markdown(
-            '<div class="instruction-card">อีเมลของคุณยังไม่ได้เชื่อมกับข้อมูลนักเรียน กรุณากรอกรหัสนักเรียนและชั้นเรียนเพื่อเริ่มใช้งาน</div>',
-            unsafe_allow_html=True,
-        )
-
-    with st.form("login_form"):
-        if st.session_state.auth_step == "email":
+    # --- แท็บที่ 1: เข้าสู่ระบบสำหรับผู้ที่มีรหัสผ่านแล้ว ---
+    with tab_login:
+        st.caption("สำหรับผู้ที่เคยลงทะเบียนบันทึกรหัสผ่านไว้แล้ว")
+        with st.form(key="login_form_modal"):
             email = st.text_input(
-                "อีเมลส่วนตัว / Personal Email",
+                "อีเมล Gmail / Email",
                 placeholder="เช่น student1@gmail.com",
                 max_chars=80,
-                key="login_email",
+                key="login_email_input",
             )
-            submitted = st.form_submit_button("ส่งรหัส OTP / Send OTP", use_container_width=True)
-        elif st.session_state.auth_step == "otp":
-            st.text_input(
-                "อีเมลที่ลงทะเบียน",
-                value=st.session_state.auth_email,
-                disabled=True,
-                key="registered_email_display",
+            password = st.text_input(
+                "รหัสผ่าน / Password",
+                placeholder="กรอกรหัสผ่านของคุณ",
+                type="password",
+                key="login_password_input",
             )
-            otp_input = st.text_input(
-                "OTP 6 หลัก / Verification Code",
-                placeholder="กรอก 6 หลัก",
-                max_chars=6,
-                key="login_otp",
-            )
-            submitted = st.form_submit_button("ยืนยันตัวตน / Verify", use_container_width=True)
-        else:
-            st.text_input(
-                "อีเมลที่เชื่อมต่อ",
-                value=st.session_state.auth_email,
-                disabled=True,
-                key="link_email_display",
-            )
-            student_id = st.text_input(
-                "รหัสนักเรียน / Student ID",
-                placeholder="เช่น 65001",
-                max_chars=10,
-                key="pending_student_id",
-            )
-            student_class = st.selectbox(
-                "ชั้นเรียน / Class",
-                options=["เลือกชั้นเรียน / Select Class", *CLASS_OPTIONS],
-                index=0,
-                key="pending_class",
-            )
-            submitted = st.form_submit_button("เชื่อมข้อมูลนักเรียน / Link profile", use_container_width=True)
+            submitted = st.form_submit_button("เข้าสู่ระบบ / Log In", use_container_width=True)
 
-    if submitted:
-        if st.session_state.auth_step == "email":
-            email = st.session_state.login_email.strip()
-            if not is_valid_email(email):
-                st.error("อีเมลไม่ถูกต้อง กรุณากรอกอีเมลที่ถูกต้อง เช่น student1@gmail.com")
+        if submitted:
+            email_clean = email.strip().lower()
+            password_clean = password.strip()
+
+            if not email_clean or not password_clean:
+                st.error("กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน")
                 return
-            st.session_state.auth_email = email.lower()
-            st.session_state.auth_step = "otp"
-            st.session_state.otp_code = generate_otp()
-            st.success("ส่งรหัสยืนยันไปแล้ว กรุณากรอกรหัส OTP ด้านล่าง")
-            st.rerun()
-        elif st.session_state.auth_step == "otp":
-            entered_otp = st.session_state.login_otp.strip()
-            if entered_otp != st.session_state.otp_code:
-                st.error("รหัส OTP ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง")
+
+            if not is_valid_email(email_clean):
+                st.error("รูปแบบอีเมลไม่ถูกต้อง")
                 return
-            student_id = find_student_by_email(st.session_state.auth_email)
-            if student_id is None:
-                st.session_state.auth_step = "profile_link"
-                st.session_state.pending_link_email = st.session_state.auth_email
-                st.success("ยืนยันอีเมลสำเร็จ กรุณาเชื่อมต่อข้อมูลนักเรียนก่อนใช้งาน")
+
+            student_id = find_student_by_email(email_clean)
+
+            if student_id and st.session_state.students_db[student_id].get("password") == password_clean:
+                st.session_state.logged_in = True
+                st.session_state.student_id = student_id
+                st.session_state.active_page = "find"
+                st.session_state.find_open = True
                 st.rerun()
+            else:
+                st.error("อีเมลหรือรหัสผ่านไม่ถูกต้อง หรือยังไม่ได้ลงทะเบียนครั้งแรก")
+
+    # --- แท็บที่ 2: ลงทะเบียนใช้งานครั้งแรกและบันทึกรหัสผ่าน ---
+    with tab_register:
+        st.caption("ลงทะเบียนใช้งานครั้งแรก เพื่อบันทึกรหัสผ่านสำหรับ Gmail ของคุณ")
+        with st.form(key="register_form_modal"):
+            reg_email = st.text_input(
+                "อีเมล Gmail *",
+                placeholder="เช่น yourname@gmail.com",
+                key="reg_email_input",
+            )
+            reg_password = st.text_input(
+                "ตั้งรหัสผ่าน *",
+                placeholder="ตั้งรหัสผ่านอย่างน้อย 4 ตัวอักษร",
+                type="password",
+                key="reg_password_input",
+            )
+            reg_confirm_password = st.text_input(
+                "ยืนยันรหัสผ่าน *",
+                placeholder="กรอกรหัสผ่านอีกครั้ง",
+                type="password",
+                key="reg_confirm_password_input",
+            )
+            reg_student_id = st.text_input(
+                "รหัสนักเรียน *",
+                placeholder="เช่น 65004",
+                max_chars=10,
+                key="reg_student_id_input",
+            )
+            reg_name = st.text_input(
+                "ชื่อ-นามสกุล *",
+                placeholder="เช่น สมชาย ใจดี",
+                key="reg_name_input",
+            )
+            reg_class = st.selectbox(
+                "ชั้นเรียน *",
+                CLASS_OPTIONS,
+                key="reg_class_input",
+            )
+
+            reg_submitted = st.form_submit_button("บันทึกข้อมูลและเข้าสู่ระบบ / Sign Up", use_container_width=True)
+
+        if reg_submitted:
+            email_clean = reg_email.strip().lower()
+            pass_clean = reg_password.strip()
+            confirm_clean = reg_confirm_password.strip()
+            sid_clean = reg_student_id.strip()
+            name_clean = reg_name.strip()
+
+            if not email_clean or not pass_clean or not confirm_clean or not sid_clean or not name_clean:
+                st.error("กรุณากรอกข้อมูลให้ครบทุกช่อง")
                 return
+
+            if not is_valid_email(email_clean):
+                st.error("รูปแบบอีเมล Gmail ไม่ถูกต้อง")
+                return
+
+            if len(pass_clean) < 4:
+                st.error("รหัสผ่านต้องมีความยาวอย่างน้อย 4 ตัวอักษร")
+                return
+
+            if pass_clean != confirm_clean:
+                st.error("รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน")
+                return
+
+            # บันทึก/อัปเดตข้อมูลนักเรียนในระบบ
+            existing_student_id = find_student_by_email(email_clean)
+            if existing_student_id:
+                st.session_state.students_db[existing_student_id]["password"] = pass_clean
+                st.session_state.students_db[existing_student_id]["name"] = name_clean
+                st.session_state.students_db[existing_student_id]["class"] = reg_class
+                target_id = existing_student_id
+            else:
+                st.session_state.students_db[sid_clean] = {
+                    "name": name_clean,
+                    "class": reg_class,
+                    "score": 100,
+                    "email": email_clean,
+                    "password": pass_clean,
+                }
+                target_id = sid_clean
+
+            # 💾 บันทึกข้อมูลนักเรียนใหม่ลงไฟล์ JSON ถาวร
+            save_json(STUDENTS_FILE, st.session_state.students_db)
+
+            st.success("บันทึกข้อมูลสำเร็จ!")
             st.session_state.logged_in = True
-            st.session_state.student_id = student_id
+            st.session_state.student_id = target_id
             st.session_state.active_page = "find"
             st.session_state.find_open = True
-            st.session_state.auth_step = "email"
-            st.session_state.otp_code = ""
-            st.session_state.login_otp = ""
-            st.rerun()
-        else:
-            student_id = st.session_state.pending_student_id.strip()
-            student_class = st.session_state.pending_class
-            if not student_id or not student_class or student_class == "เลือกชั้นเรียน / Select Class":
-                st.error("กรุณากรอกรหัสนักเรียนและเลือกชั้นเรียนให้ครบถ้วน")
-                return
-            if student_id not in STUDENTS:
-                st.error("รหัสนักเรียนไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง")
-                return
-            student = STUDENTS[student_id]
-            student["email"] = st.session_state.auth_email.lower()
-            student["class"] = student_class
-            st.session_state.logged_in = True
-            st.session_state.student_id = student_id
-            st.session_state.active_page = "find"
-            st.session_state.find_open = True
-            st.session_state.auth_step = "email"
-            st.session_state.otp_code = ""
-            st.session_state.login_otp = ""
             st.rerun()
 
 
 def show_profile(student_id):
-    student = STUDENTS[student_id]
+    student = st.session_state.students_db[student_id]
     returned = sum(report["reporter"] == student_id for report in st.session_state.reports)
     st.markdown('<div class="brand"><div class="brand-kicker">Lost & Found HWP</div><h1>ของหาย ได้คืน</h1><p>ช่วยกันดูแลของทุกชิ้นในรั้วโรงเรียน</p></div>', unsafe_allow_html=True)
     st.markdown(
@@ -347,7 +372,6 @@ def show_profile(student_id):
 
 
 def report_form(student_id):
-    """Render the report workflow inside a touch-friendly modal dialog."""
     st.markdown('<div class="modal-kicker">Report found</div>', unsafe_allow_html=True)
     st.subheader("แจ้งของที่พบ / Report found")
     _, close_col = st.columns([4, 1])
@@ -363,12 +387,30 @@ def report_form(student_id):
         found_time = st.time_input("เวลาที่พบ *", value=datetime.now().replace(second=0, microsecond=0).time(), step=300, format="24h")
         description = st.text_area("รายละเอียดเพิ่มเติม", placeholder="สี ลักษณะ จุดสังเกต หรือข้อมูลที่ช่วยยืนยันเจ้าของ", height=100)
         submitted = st.form_submit_button("บันทึกการแจ้งเก็บของ", use_container_width=True)
+        
     if submitted:
         if not item.strip():
             st.error("กรุณาระบุชื่อสิ่งของ")
             return
-        st.session_state.reports.insert(0, {"item": item.strip(), "category": category, "location": location, "found_at": f"{found_date.strftime('%d/%m/%Y')} {found_time.strftime('%H:%M')}", "description": description.strip() or "ไม่มีรายละเอียดเพิ่มเติม", "reporter": student_id, "status": "นำส่งห้องปกครองแล้ว"})
+        
+        # 1. เพิ่มรายการใหม่ลง session_state
+        new_report = {
+            "item": item.strip(),
+            "category": category,
+            "location": location,
+            "found_at": f"{found_date.strftime('%d/%m/%Y')} {found_time.strftime('%H:%M')}",
+            "description": description.strip() or "ไม่มีรายละเอียดเพิ่มเติม",
+            "reporter": student_id,
+            "status": "นำส่งห้องปกครองแล้ว",
+        }
+        st.session_state.reports.insert(0, new_report)
+        
+        # 💾 2. บันทึกของที่พบใหม่ลงไฟล์ JSON ถาวร
+        save_json(REPORTS_FILE, st.session_state.reports)
+        
         st.success("บันทึกเรียบร้อย ขอบคุณที่ช่วยดูแลของในโรงเรียน")
+        
+        # 3. อัปเดตหน้าจอทันที
         st.rerun()
 
 
@@ -441,7 +483,7 @@ def navigation(student_id):
 
 
 def profile_dashboard(student_id):
-    student = STUDENTS[student_id]
+    student = st.session_state.students_db[student_id]
     mine = [report for report in st.session_state.reports if report["reporter"] == student_id]
     returned = len(mine)
     progress = min(returned / 5, 1)
@@ -475,4 +517,3 @@ else:
     elif st.session_state.active_page == "activity":
         profile_dashboard(st.session_state.student_id)
 st.markdown('</div>', unsafe_allow_html=True)
-

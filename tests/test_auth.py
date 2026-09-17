@@ -24,3 +24,4 @@ def test_otp_generation_is_six_digits():
     otp = app.generate_otp()
     assert len(otp) == 6
     assert re.fullmatch(r"\d{6}", otp) is not None
+    assert 100000 <= int(otp) <= 999999

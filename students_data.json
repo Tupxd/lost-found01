@@ -1,0 +1,30 @@
+{
+    "65001": {
+        "name": "กมลชนก ใจดี",
+        "class": "ม.5/1",
+        "score": 82,
+        "email": "student1@gmail.com",
+        "password": "123456"
+    },
+    "65002": {
+        "name": "ธนกฤต แสงทอง",
+        "class": "ม.4/3",
+        "score": 64,
+        "email": "thanakrit@hotmail.com",
+        "password": "123456"
+    },
+    "65003": {
+        "name": "พิมพ์ชนก รุ่งเรือง",
+        "class": "ม.6/2",
+        "score": 95,
+        "email": "pimchanok@outlook.com",
+        "password": "123456"
+    },
+    "11726": {
+        "name": "ธัชภาต แสงภัทรเมธี",
+        "class": "ม.5/1",
+        "score": 100,
+        "email": "tuplauxdd2@gmail.com",
+        "password": "tup1781xd"
+    }
+}
