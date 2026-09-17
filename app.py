@@ -111,8 +111,17 @@ def is_valid_email(email):
     return bool(re.fullmatch(EMAIL_PATTERN, normalized))
 
 
-def find_student_by_email(email):
-    normalized = (email or "").strip().lower()
+def find_student_by_email_or_id(identifier):
+    """ค้นหาบัญชีจาก Email หรือ รหัสนักเรียน"""
+    if not identifier:
+        return None
+    normalized = identifier.strip().lower()
+    
+    # 1. ตรวจสอบค้นหาด้วย รหัสนักเรียน (Key)
+    if identifier.strip() in st.session_state.students_db:
+        return identifier.strip()
+        
+    # 2. ค้นหาด้วย Email
     for student_id, student in st.session_state.students_db.items():
         for field in ("email", "personal_email", "school_email"):
             if student.get(field, "").strip().lower() == normalized:
@@ -228,11 +237,11 @@ def show_login():
 
     # --- แท็บที่ 1: เข้าสู่ระบบสำหรับผู้ที่มีรหัสผ่านแล้ว ---
     with tab_login:
-        st.caption("สำหรับผู้ที่เคยลงทะเบียนบันทึกรหัสผ่านไว้แล้ว")
+        st.caption("เข้าสู่ระบบด้วย Gmail หรือรหัสนักเรียน และรหัสผ่านที่ตั้งไว้")
         with st.form(key="login_form_modal"):
-            email = st.text_input(
-                "อีเมล Gmail / Email",
-                placeholder="เช่น student1@gmail.com",
+            login_id = st.text_input(
+                "อีเมล Gmail / รหัสนักเรียน",
+                placeholder="เช่น student1@gmail.com หรือ 65001",
                 max_chars=80,
                 key="login_email_input",
             )
@@ -245,18 +254,14 @@ def show_login():
             submitted = st.form_submit_button("เข้าสู่ระบบ / Log In", use_container_width=True)
 
         if submitted:
-            email_clean = email.strip().lower()
+            login_clean = login_id.strip()
             password_clean = password.strip()
 
-            if not email_clean or not password_clean:
-                st.error("กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน")
+            if not login_clean or not password_clean:
+                st.error("กรุณากรอกอีเมล/รหัสนักเรียน และรหัสผ่านให้ครบถ้วน")
                 return
 
-            if not is_valid_email(email_clean):
-                st.error("รูปแบบอีเมลไม่ถูกต้อง")
-                return
-
-            student_id = find_student_by_email(email_clean)
+            student_id = find_student_by_email_or_id(login_clean)
 
             if student_id and st.session_state.students_db[student_id].get("password") == password_clean:
                 st.session_state.logged_in = True
@@ -265,7 +270,7 @@ def show_login():
                 st.session_state.find_open = True
                 st.rerun()
             else:
-                st.error("อีเมลหรือรหัสผ่านไม่ถูกต้อง หรือยังไม่ได้ลงทะเบียนครั้งแรก")
+                st.error("อีเมล/รหัสนักเรียน หรือรหัสผ่านไม่ถูกต้อง หรือยังไม่ได้ลงทะเบียนครั้งแรก")
 
     # --- แท็บที่ 2: ลงทะเบียนใช้งานครั้งแรกและบันทึกรหัสผ่าน ---
     with tab_register:
@@ -330,14 +335,18 @@ def show_login():
                 st.error("รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน")
                 return
 
-            # บันทึก/อัปเดตข้อมูลนักเรียนในระบบ
-            existing_student_id = find_student_by_email(email_clean)
-            if existing_student_id:
-                st.session_state.students_db[existing_student_id]["password"] = pass_clean
-                st.session_state.students_db[existing_student_id]["name"] = name_clean
-                st.session_state.students_db[existing_student_id]["class"] = reg_class
-                target_id = existing_student_id
+            # ตรวจสอบว่ามีข้อมูลเดิมในระบบหรือไม่ (ค้นหาจาก Email หรือ รหัสนักเรียน)
+            matched_id = find_student_by_email_or_id(email_clean) or (sid_clean if sid_clean in st.session_state.students_db else None)
+
+            if matched_id:
+                # อัปเดตรหัสผ่านและข้อมูลลงในบัญชีเดิม
+                st.session_state.students_db[matched_id]["email"] = email_clean
+                st.session_state.students_db[matched_id]["password"] = pass_clean
+                st.session_state.students_db[matched_id]["name"] = name_clean
+                st.session_state.students_db[matched_id]["class"] = reg_class
+                target_id = matched_id
             else:
+                # บันทึกเป็นผู้ใช้ใหม่
                 st.session_state.students_db[sid_clean] = {
                     "name": name_clean,
                     "class": reg_class,
@@ -347,10 +356,10 @@ def show_login():
                 }
                 target_id = sid_clean
 
-            # 💾 บันทึกข้อมูลนักเรียนใหม่ลงไฟล์ JSON ถาวร
+            # 💾 บันทึกข้อมูลลงไฟล์ JSON ถาวรทันที
             save_json(STUDENTS_FILE, st.session_state.students_db)
 
-            st.success("บันทึกข้อมูลสำเร็จ!")
+            st.success("บันทึกข้อมูลสำเร็จ! คุณสามารถใช้ Gmail และรหัสผ่านนี้ในการล็อกอินครั้งถัดไปได้แล้ว")
             st.session_state.logged_in = True
             st.session_state.student_id = target_id
             st.session_state.active_page = "find"
